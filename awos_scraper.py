@@ -40,6 +40,7 @@ from typing import Any
 DIRECTORY_URL = "http://awosnet.com/default.php"
 NOAA_METAR_URL = "https://aviationweather.gov/api/data/metar"
 NOAA_TAF_URL = "https://aviationweather.gov/api/data/taf"
+ASTRO_SHEET_URL = "https://script.google.com/macros/s/AKfycbwuUSq37Tt2L7tXlUOumbFIZor40WbshBrhzgNYzc7FUDdL1vCOHxik3mwZtftKvhoq/exec"
 INDONESIA_BBOX = "-11,95,6,141"
 INDONESIA_ICAO_PREFIXES = ("WA", "WI", "WR")
 INDONESIA_NOAA_EXTRA_ICAOS = (
@@ -363,6 +364,7 @@ def parse_awos_xml(xml_text: str, station_meta: dict[str, str], fetched_utc: dat
 
     return {
         "icao": icao,
+        "iata": None,
         "airport_name": get_val("airportName") or station_meta["directory_name"],
         "directory_name": station_meta["directory_name"],
         "region": station_meta["region"],
@@ -545,6 +547,7 @@ def parse_noaa_metar_record(item: dict[str, Any], fetched_utc: datetime) -> dict
 
     return {
         "icao": icao,
+        "iata": None,
         "airport_name": airport_name,
         "directory_name": airport_name,
         "region": "Indonesia",
@@ -599,8 +602,9 @@ def _http_get_json_list(url: str, timeout: int) -> list[dict[str, Any]]:
 def fetch_noaa_indonesia_metars(
     target_icaos: list[str], timeout: int, logger: logging.Logger
 ) -> dict[str, dict[str, Any]]:
-    """Ambil live METAR Indonesia dari NOAA (gabungan bbox Indonesia + daftar ICAO eksplisit)."""
+    """Ambil live METAR Indonesia (+ alternate eksplisit) dari NOAA."""
     result: dict[str, dict[str, Any]] = {}
+    explicit_set = {c.upper() for c in target_icaos}
     urls = [
         f"{NOAA_METAR_URL}?bbox={urllib.parse.quote(INDONESIA_BBOX)}&format=json",
     ]
@@ -615,7 +619,7 @@ def fetch_noaa_indonesia_metars(
             items = _http_get_json_list(url, timeout=timeout)
             for item in items:
                 code = (clean_str(item.get("icaoId")) or "").upper()
-                if len(code) == 4 and code.startswith(INDONESIA_ICAO_PREFIXES):
+                if len(code) == 4 and (code.startswith(INDONESIA_ICAO_PREFIXES) or code in explicit_set):
                     prev = result.get(code)
                     if prev is None or (item.get("obsTime") or 0) >= (prev.get("obsTime") or 0):
                         result[code] = item
@@ -627,8 +631,9 @@ def fetch_noaa_indonesia_metars(
 def fetch_noaa_indonesia_tafs(
     target_icaos: list[str], timeout: int, logger: logging.Logger
 ) -> dict[str, dict[str, Any]]:
-    """Ambil live TAF/TAFOR Indonesia dari NOAA Aviation Weather API."""
+    """Ambil live TAF/TAFOR Indonesia (+ alternate eksplisit) dari NOAA Aviation Weather API."""
     result: dict[str, dict[str, Any]] = {}
+    explicit_set = {c.upper() for c in target_icaos}
     urls = [
         f"{NOAA_TAF_URL}?bbox={urllib.parse.quote(INDONESIA_BBOX)}&format=json",
     ]
@@ -643,7 +648,7 @@ def fetch_noaa_indonesia_tafs(
             for item in items:
                 code = (clean_str(item.get("icaoId")) or "").upper()
                 raw_taf = clean_str(item.get("rawTAF"))
-                if len(code) == 4 and code.startswith(INDONESIA_ICAO_PREFIXES) and raw_taf:
+                if len(code) == 4 and (code.startswith(INDONESIA_ICAO_PREFIXES) or code in explicit_set) and raw_taf:
                     prev = result.get(code)
                     cur_issue = str(item.get("issueTime") or "")
                     prev_issue = str(prev.get("issueTime") or "") if prev else ""
@@ -657,6 +662,102 @@ def fetch_noaa_indonesia_tafs(
     return result
 
 
+def fetch_astro_indonesia_airports(
+    timeout: int, logger: logging.Logger
+) -> dict[str, dict[str, Any]]:
+    """Ambil daftar bandara (ICAO, IATA, Nama, Lat, Lon) dari Google Sheet Astro DB."""
+    result: dict[str, dict[str, Any]] = {}
+    try:
+        text = http_get_text(ASTRO_SHEET_URL, timeout=max(timeout, 20), retries=2).strip()
+        if not text:
+            return result
+        parsed = json.loads(text)
+        rows = parsed.get("data") if isinstance(parsed, dict) else None
+        if not isinstance(rows, list):
+            return result
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            icao = (clean_str(str(row.get("icao") or "")) or "").upper()
+            if len(icao) != 4 or not icao.isalpha():
+                continue
+            if icao in result:
+                continue  # Strict zero-duplicate guard
+            iata = (clean_str(str(row.get("iata") or "")) or "").upper() or None
+            name = clean_str(str(row.get("name") or "")) or f"{icao} Aerodrome"
+            lat = to_float(str(row.get("lat")) if row.get("lat") is not None else None)
+            lon = to_float(str(row.get("lon")) if row.get("lon") is not None else None)
+            if lat is not None:
+                lat = round(lat, 6)
+            if lon is not None:
+                lon = round(lon, 6)
+            result[icao] = {
+                "icao": icao,
+                "iata": iata,
+                "name": name,
+                "lat": lat,
+                "lon": lon,
+            }
+    except Exception as exc:
+        logger.warning("Astro DB fetch warning (non-fatal): %s", exc)
+    return result
+
+
+def build_astro_only_record(entry: dict[str, Any], fetched_utc: datetime) -> dict[str, Any]:
+    """Buat record standar untuk bandara Astro-only (tanpa sensor AWOS/NOAA live)."""
+    icao = entry["icao"]
+    iata = entry.get("iata")
+    name = entry["name"]
+    lat = entry.get("lat")
+    lon = entry.get("lon")
+    url = (
+        f"https://skyvector.com/?ll={lat},{lon}&chart=302&zoom=3"
+        if (lat is not None and lon is not None)
+        else "https://skyvector.com/"
+    )
+    return {
+        "icao": icao,
+        "iata": iata,
+        "airport_name": name,
+        "directory_name": name,
+        "region": "Indonesia",
+        "url": url,
+        "latitude": lat,
+        "longitude": lon,
+        "elevation_ft": None,
+        "runway": None,
+        "display_units": "METRIC",
+        "observed_date": None,
+        "observed_time_utc": None,
+        "observed_at_utc": None,
+        "observed_at_wib": None,
+        "observed_epoch": None,
+        "temperature_c": None,
+        "dew_point_c": None,
+        "humidity_pct": None,
+        "altimeter_value": None,
+        "altimeter_unit": None,
+        "density_altitude_ft": None,
+        "wind_speed_kt": None,
+        "wind_direction_deg": None,
+        "wind_gust_kt": None,
+        "wind_variable": None,
+        "visibility_value": None,
+        "visibility_unit": None,
+        "sky_condition": None,
+        "present_weather": None,
+        "rainfall_hour": None,
+        "rainfall_unit": None,
+        "day_night": None,
+        "metar": None,
+        "taf": None,
+        "taf_issued_utc": None,
+        "source": "ASTRO",
+        "fetched_at_utc": fetched_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "fetched_at_wib": fetched_utc.astimezone(WIB).strftime("%Y-%m-%dT%H:%M:%S+07:00"),
+    }
+
+
 def merge_hybrid_noaa_data(
     records: list[dict[str, Any]],
     failures: list[dict[str, Any]],
@@ -665,27 +766,36 @@ def merge_hybrid_noaa_data(
     timeout: int,
     fetched_utc: datetime,
     logger: logging.Logger,
-) -> tuple[int, int, int]:
+    include_astro: bool = True,
+) -> tuple[int, int, int, int]:
     """
-    Gabungkan data AWOS Net dengan NOAA METAR & TAF:
+    Gabungkan data AWOS Net + NOAA METAR/TAF + Astro DB (strict zero-duplicate by ICAO):
       1. Enrich (lengkapi) field kosong pada stasiun AWOS (misal METAR/QNH/VIS untuk WIHH).
       2. Tambah bandara utama Indonesia dari NOAA yang tidak ada di AWOS Net (WARR, WADD, WADL, WAHI, WAQQ, dll.).
       3. Tempelkan live TAF/TAFOR ke setiap bandara yang tersedia.
-    Mengembalikan (noaa_added_count, noaa_enriched_count, taf_attached_count).
+      4. Tempel kode IATA dari Astro DB ke bandara yang cocok & tambahkan bandara Astro-only (WIDM/MWK, WAQA/NNX, dll.) tanpa duplikat.
+    Mengembalikan (noaa_added_count, noaa_enriched_count, taf_attached_count, astro_added_count).
     """
     is_indonesia_scope = bool(
         airports_filter
         or (region and region.strip().lower() == "indonesia")
     )
     if not is_indonesia_scope:
-        return 0, 0, 0
+        return 0, 0, 0, 0
 
     allowed_set = {c.strip().upper() for c in airports_filter} if airports_filter else None
 
     existing_icaos = {r["icao"].upper(): r for r in records}
     failed_icaos = {f["icao"].upper() for f in failures if f.get("icao")}
 
-    hint_set = set(INDONESIA_NOAA_EXTRA_ICAOS) | set(existing_icaos.keys()) | failed_icaos
+    astro_map = fetch_astro_indonesia_airports(timeout=timeout, logger=logger) if include_astro else {}
+
+    hint_set = (
+        set(INDONESIA_NOAA_EXTRA_ICAOS)
+        | set(existing_icaos.keys())
+        | failed_icaos
+        | set(astro_map.keys())
+    )
     if allowed_set:
         hint_set = {c for c in allowed_set if c.startswith(INDONESIA_ICAO_PREFIXES)}
 
@@ -738,8 +848,26 @@ def merge_hybrid_noaa_data(
             records.append(noaa_rec)
             existing_icaos[code] = noaa_rec
             noaa_added += 1
-            # Jika sebelumnya tercatat offline di AWOS, hapus dari daftar gagal karena tercover NOAA
             failures[:] = [f for f in failures if str(f.get("icao", "")).upper() != code]
+
+    # Attach IATA & missing coordinates from Astro DB to live stations; append remaining Astro-only stations cleanly (zero duplicates)
+    astro_added = 0
+    for code, a_entry in astro_map.items():
+        if allowed_set and code not in allowed_set:
+            continue
+        if code in existing_icaos:
+            rec = existing_icaos[code]
+            if a_entry.get("iata") and not rec.get("iata"):
+                rec["iata"] = a_entry["iata"]
+            if rec.get("latitude") is None and a_entry.get("lat") is not None:
+                rec["latitude"] = a_entry["lat"]
+            if rec.get("longitude") is None and a_entry.get("lon") is not None:
+                rec["longitude"] = a_entry["lon"]
+        else:
+            astro_rec = build_astro_only_record(a_entry, fetched_utc)
+            records.append(astro_rec)
+            existing_icaos[code] = astro_rec
+            astro_added += 1
 
     taf_attached = 0
     for code, taf_info in noaa_tafs.items():
@@ -749,7 +877,7 @@ def merge_hybrid_noaa_data(
             rec["taf_issued_utc"] = taf_info.get("issueTime")
             taf_attached += 1
 
-    return noaa_added, noaa_enriched, taf_attached
+    return noaa_added, noaa_enriched, taf_attached, astro_added
 
 
 def fetch_one_airport(
@@ -843,7 +971,13 @@ def init_database(db_path: Path) -> sqlite3.Connection:
         """
     )
 
-    # Safe forward migration for existing SQLite databases (add taf, taf_issued_utc, source)
+    # Safe forward migration for existing SQLite databases
+    airport_cols = {
+        row[1] for row in conn.execute("PRAGMA table_info(airports)").fetchall()
+    }
+    if "iata" not in airport_cols:
+        conn.execute("ALTER TABLE airports ADD COLUMN iata TEXT")
+
     existing_cols = {
         row[1] for row in conn.execute("PRAGMA table_info(observations)").fetchall()
     }
@@ -880,10 +1014,11 @@ def save_to_sqlite(
                 conn.execute(
                     """
                     INSERT INTO airports (
-                        icao, airport_name, directory_name, region, url,
+                        icao, iata, airport_name, directory_name, region, url,
                         latitude, longitude, elevation_ft, runway, display_units, updated_at_utc
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(icao) DO UPDATE SET
+                        iata = COALESCE(excluded.iata, airports.iata),
                         airport_name = excluded.airport_name,
                         directory_name = excluded.directory_name,
                         region = excluded.region,
@@ -897,6 +1032,7 @@ def save_to_sqlite(
                     """,
                     (
                         rec["icao"],
+                        rec.get("iata"),
                         rec["airport_name"],
                         rec["directory_name"],
                         rec["region"],
@@ -909,6 +1045,10 @@ def save_to_sqlite(
                         rec["fetched_at_utc"],
                     ),
                 )
+
+                # Jangan masukkan baris ASTRO-only kosong ke tabel riwayat observasi cuaca
+                if rec.get("source") == "ASTRO" and not rec.get("observed_at_utc"):
+                    continue
 
                 # Gunakan observed_at_utc jika tersedia; jika tidak, fallback ke fetched_at_utc
                 obs_key = rec["observed_at_utc"] or rec["fetched_at_utc"]
@@ -1036,8 +1176,9 @@ def run_once(args: argparse.Namespace, logger: logging.Logger) -> int:
     noaa_added = 0
     noaa_enriched = 0
     taf_attached = 0
+    astro_added = 0
     if not getattr(args, "no_noaa", False):
-        noaa_added, noaa_enriched, taf_attached = merge_hybrid_noaa_data(
+        noaa_added, noaa_enriched, taf_attached, astro_added = merge_hybrid_noaa_data(
             records=records,
             failures=failures,
             region=region,
@@ -1045,17 +1186,28 @@ def run_once(args: argparse.Namespace, logger: logging.Logger) -> int:
             timeout=args.timeout,
             fetched_utc=started_utc,
             logger=logger,
+            include_astro=True,
         )
-        if noaa_added or noaa_enriched or taf_attached:
+        if noaa_added or noaa_enriched or taf_attached or astro_added:
             logger.info(
-                "Hybrid NOAA: +%d bandara baru | %d bandara AWOS dilengkapi METAR | %d live TAF terpasang",
+                "Hybrid NOAA+Astro: +%d NOAA | %d AWOS dilengkapi METAR | %d live TAF | +%d Astro-only",
                 noaa_added,
                 noaa_enriched,
                 taf_attached,
+                astro_added,
             )
 
-    records.sort(key=lambda r: r["icao"])
+    # Final defensive deduplication by ICAO
+    dedup_records: dict[str, dict[str, Any]] = {}
+    for r in records:
+        code = str(r.get("icao", "")).upper()
+        if code and code not in dedup_records:
+            dedup_records[code] = r
+    records = sorted(dedup_records.values(), key=lambda r: r["icao"])
     failures.sort(key=lambda r: r["icao"])
+
+    live_wx_count = sum(1 for r in records if r.get("source") != "ASTRO")
+    astro_only_count = sum(1 for r in records if r.get("source") == "ASTRO")
 
     finished_utc = datetime.now(timezone.utc)
     duration_sec = round((finished_utc - started_utc).total_seconds(), 2)
@@ -1075,13 +1227,15 @@ def run_once(args: argparse.Namespace, logger: logging.Logger) -> int:
     payload = {
         "meta": {
             "source": DIRECTORY_URL,
-            "sources": ["AWOS Net", "NOAA METAR/TAF"] if not getattr(args, "no_noaa", False) else ["AWOS Net"],
+            "sources": ["AWOS Net", "NOAA METAR/TAF", "Astro DB"] if not getattr(args, "no_noaa", False) else ["AWOS Net"],
             "filter": region_label,
             "fetched_at_utc": finished_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "fetched_at_wib": finished_utc.astimezone(WIB).strftime("%Y-%m-%dT%H:%M:%S+07:00"),
             "duration_seconds": duration_sec,
             "total_airports": len(records) + len(failures),
             "success_count": len(records),
+            "live_wx_count": live_wx_count,
+            "astro_only_count": astro_only_count,
             "noaa_added_count": noaa_added,
             "noaa_enriched_count": noaa_enriched,
             "taf_count": taf_attached,
