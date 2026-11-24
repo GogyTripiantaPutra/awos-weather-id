@@ -1,0 +1,9 @@
+# Jangan upload file database lokal & log ke GitHub agar repo tetap ringan
+data/awos_weather.db
+data/awos_weather.db-shm
+data/awos_weather.db-wal
+data/snapshots/
+logs/
+__pycache__/
+*.pyc
+*.tmp

@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWOS Weather Indonesia — Live Airport Dashboard</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --bg-card: #111a2e;
+      --bg-elevated: #17233d;
+      --bg-hover: #1b2a4a;
+      --border: #233354;
+      --text: #e6eefc;
+      --text-muted: #8fa3c7;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --green: #22c55e;
+      --green-soft: rgba(34, 197, 94, 0.15);
+      --amber: #f59e0b;
+      --amber-soft: rgba(245, 158, 11, 0.16);
+      --red: #ef4444;
+      --red-soft: rgba(239, 68, 68, 0.16);
+      --gray-soft: rgba(148, 163, 184, 0.14);
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    [data-theme="light"] {
+      --bg: #f1f5f9;
+      --bg-card: #ffffff;
+      --bg-elevated: #f8fafc;
+      --bg-hover: #eff6ff;
+      --border: #dbe3ef;
+      --text: #0f172a;
+      --text-muted: #526480;
+      --accent: #0284c7;
+      --accent-soft: rgba(2, 132, 199, 0.11);
+      --green: #16a34a;
+      --green-soft: rgba(22, 163, 74, 0.12);
+      --amber: #d97706;
+      --amber-soft: rgba(217, 119, 6, 0.13);
+      --red: #dc2626;
+      --red-soft: rgba(220, 38, 38, 0.12);
+      --gray-soft: rgba(100, 116, 139, 0.12);
+      --shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13.5px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 14px;
+    }
+
+    body.compact .app { padding: 8px; }
+    body.compact .stats-grid { display: none; }
+
+    /* Header */
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      display: inline-block;
+      box-shadow: 0 0 0 3px var(--green-soft);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text);
+      padding: 7px 11px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent);
+    }
+
+    .btn-primary {
+      background: var(--accent-soft);
+      border-color: rgba(56, 189, 248, 0.35);
+      color: var(--accent);
+    }
+
+    /* KPI Strip */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    @media (max-width: 760px) {
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+
+    .stat-card:hover { border-color: var(--accent); }
+    .stat-card.active {
+      border-color: var(--accent);
+      background: var(--bg-elevated);
+    }
+
+    .stat-label {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+      font-family: var(--mono);
+      margin-top: 2px;
+    }
+
+    .stat-note {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .search-wrap {
+      position: relative;
+      flex: 1 1 260px;
+      max-width: 420px;
+    }
+
+    .search-wrap svg {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px 8px 34px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+
+    .search-input:focus { border-color: var(--accent); }
+
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .pill {
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-muted);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .pill:hover { color: var(--text); border-color: var(--accent); }
+    .pill.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Table */
+    .table-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .table-scroll {
+      overflow-x: auto;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 960px;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      text-align: left;
+      padding: 10px 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    thead th.sortable { cursor: pointer; }
+    thead th.sortable:hover { color: var(--text); }
+    thead th.sorted { color: var(--accent); }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg-hover); }
+
+    tbody td {
+      padding: 9px 10px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    .star-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      color: var(--text-muted);
+      padding: 2px 4px;
+      line-height: 1;
+    }
+    .star-btn.pinned { color: #facc15; }
+
+    .icao-badge {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 3px 7px;
+      border-radius: 6px;
+      display: inline-block;
+    }
+
+    .airport-name {
+      font-weight: 600;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: block;
+    }
+
+    .mono { font-family: var(--mono); }
+    .muted { color: var(--text-muted); }
+
+    .status-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-fresh { background: var(--green); }
+    .dot-warn { background: var(--amber); }
+    .dot-stale { background: #64748b; }
+
+    .wind-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+    }
+
+    .wind-arrow {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+    }
+
+    .chip {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+
+    .chip-ok { background: var(--green-soft); color: var(--green); }
+    .chip-warn { background: var(--amber-soft); color: var(--amber); }
+    .chip-danger { background: var(--red-soft); color: var(--red); }
+    .chip-neutral { background: var(--gray-soft); color: var(--text-muted); }
+
+    .metar-cell {
+      max-width: 290px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .metar-text {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .copy-mini {
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-size: 11px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .copy-mini:hover { color: var(--text); border-color: var(--accent); }
+
+    .table-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 14px;
+      font-size: 12px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      background: var(--bg-elevated);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 36px 16px;
+      color: var(--text-muted);
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 50;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      width: 100%;
+      max-width: 640px;
+      max-height: 90vh;
+      overflow-y: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 18px 20px;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .close-btn {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    @media (max-width: 540px) {
+      .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    .detail-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+
+    .detail-box .k {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .detail-box .v {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+
+    .metar-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      word-break: break-word;
+      margin-bottom: 14px;
+    }
+
+    .code-box {
+      width: 100%;
+      min-height: 92px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      resize: vertical;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .form-row label {
+      display: block;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .form-row input, .form-row select {
+      width: 100%;
+      padding: 7px 9px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text);
+      font-size: 12.5px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 9px 14px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      font-weight: 600;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 80;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    a.link { color: var(--accent); text-decoration: none; }
+    a.link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Cuaca Bandara Indonesia (AWOS Live)</h1>
+          <div class="brand-sub">
+            <span class="live-dot" id="liveDot"></span>
+            <span id="lastUpdated">Memuat data cuaca...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn" id="btnRefresh" type="button" title="Muat ulang JSON terbaru">
+          ↻ Refresh
+        </button>
+        <button class="btn" id="btnTheme" type="button" title="Ganti tema Gelap / Terang">
+          ☀ Tema
+        </button>
+        <button class="btn btn-primary" id="btnEmbed" type="button" title="Salin kode iframe untuk situs web">
+          &lt;/&gt; Kode Embed
+        </button>
+      </div>
+    </header>
+
+    <section class="stats-grid" id="statsGrid">
+      <div class="stat-card" data-filter="active">
+        <div class="stat-label">Bandara Aktif (&lt; 2 Jam)</div>
+        <div class="stat-value" id="statActive">-</div>
+        <div class="stat-note" id="statActiveNote">Data real-time terbaru</div>
+      </div>
+      <div class="stat-card" data-filter="all">
+        <div class="stat-label">Total Bandara</div>
+        <div class="stat-value" id="statTotal">-</div>
+        <div class="stat-note" id="statOfflineNote">-</div>
+      </div>
+      <div class="stat-card" data-filter="lowvis">
+        <div class="stat-label">Visibilitas &lt; 5 km</div>
+        <div class="stat-value" id="statLowVis" style="color: var(--amber);">-</div>
+        <div class="stat-note">Perlu perhatian jarak pandang</div>
+      </div>
+      <div class="stat-card" data-filter="pwx">
+        <div class="stat-label">Cuaca Signifikan (PWX)</div>
+        <div class="stat-value" id="statPwx" style="color: var(--accent);">-</div>
+        <div class="stat-note">Hujan, kabut, badai, asap, dll.</div>
+      </div>
+    </section>
+
+    <section class="controls">
+      <div class="search-wrap">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <input id="searchInput" class="search-input" type="search" placeholder="Cari ICAO (WIII), nama bandara, atau METAR (TS, RA, BR)..." autocomplete="off" />
+      </div>
+
+      <div class="pills" id="filterPills">
+        <button class="pill active" data-filter="all" type="button">Semua</button>
+        <button class="pill" data-filter="active" type="button">Aktif (&lt;2j)</button>
+        <button class="pill" data-filter="lowvis" type="button">Vis &lt; 5km</button>
+        <button class="pill" data-filter="pwx" type="button">Cuaca (PWX)</button>
+        <button class="pill" data-filter="pinned" type="button">★ Favorit</button>
+      </div>
+    </section>
+
+    <section class="table-card">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 32px;">★</th>
+              <th class="sortable" data-sort="icao">ICAO</th>
+              <th class="sortable" data-sort="airport_name">Bandara</th>
+              <th class="sortable sorted" data-sort="observed_epoch">Update (WIB) ↓</th>
+              <th class="sortable" data-sort="temperature_c">Suhu / Td</th>
+              <th class="sortable" data-sort="humidity_pct">RH</th>
+              <th class="sortable" data-sort="wind_speed_kt">Angin</th>
+              <th class="sortable" data-sort="altimeter_value">QNH</th>
+              <th class="sortable" data-sort="visibility_value">Visibilitas</th>
+              <th>Awan / Cuaca</th>
+              <th>METAR</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr><td colspan="11" class="empty-state">Memuat data cuaca bandara...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <span id="rowCount">Menampilkan 0 bandara</span>
+        <span>
+          Sumber: <a class="link" href="http://awosnet.com/default.php" target="_blank" rel="noopener">AWOS Net</a>
+          • Hanya untuk referensi/advisory, bukan untuk perencanaan penerbangan operasional.
+        </span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Detail Modal -->
+  <div class="modal-backdrop" id="detailModal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h2 class="modal-title" id="detailTitle">-</h2>
+          <div class="brand-sub" id="detailSub">-</div>
+        </div>
+        <button class="close-btn" id="closeDetail" type="button" aria-label="Tutup">×</button>
+      </div>
+
+      <div class="detail-grid" id="detailGrid"></div>
+
+      <div class="stat-label" style="margin-bottom: 6px;">METAR / SPECI</div>
+      <div class="metar-box" id="detailMetar">-</div>
+
+      <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; align-items:center;">
+        <div style="display:flex; gap:12px; font-size:12.5px;">
+          <a class="link" id="detailAwosLink" href="#" target="_blank" rel="noopener">Buka Halaman AWOS ↗</a>
+          <a class="link" id="detailMapLink" href="#" target="_blank" rel="noopener">Lihat di Peta ↗</a>
+        </div>
+        <button class="btn btn-primary" id="btnCopyDetailMetar" type="button">Salin METAR</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Embed Code Modal -->
+  <div class="modal-backdrop" id="embedModal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h2 class="modal-title">Salin Kode Embed untuk Situs Web</h2>
+          <div class="brand-sub">Tempel kode HTML di bawah ke halaman website Anda (HTML, WordPress, Netlify, PHP, dll.)</div>
+        </div>
+        <button class="close-btn" id="closeEmbed" type="button" aria-label="Tutup">×</button>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label for="embTheme">Tema</label>
+          <select id="embTheme">
+            <option value="dark">Gelap (Dark)</option>
+            <option value="light">Terang (Light)</option>
+          </select>
+        </div>
+        <div>
+          <label for="embHeight">Tinggi (px)</label>
+          <input id="embHeight" type="number" value="720" min="360" max="1600" />
+        </div>
+        <div>
+          <label for="embAirports">Filter ICAO (opsional)</label>
+          <input id="embAirports" type="text" placeholder="WIII,WICC,WIDD" />
+        </div>
+      </div>
+
+      <textarea id="embedSnippet" class="code-box" readonly></textarea>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:8px;">
+        <span class="muted" style="font-size:12px;">Jika masih di localhost, ganti URL dengan alamat GitHub Pages Anda setelah deploy.</span>
+        <button class="btn btn-primary" id="btnCopyEmbed" type="button">Salin Kode</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Tersalin!</div>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const DATA_URL = params.get("data") || "./data/latest_indonesia.json";
+      const URL_AIRPORTS = (params.get("airports") || "")
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
+      const IS_COMPACT = params.get("compact") === "1";
+      const IN_IFRAME = window.self !== window.top;
+
+      if (IS_COMPACT) document.body.classList.add("compact");
+      if (IN_IFRAME || params.get("hideEmbedBtn") === "1") {
+        document.getElementById("btnEmbed").style.display = "none";
+      }
+
+      // Theme setup
+      const savedTheme = localStorage.getItem("awos_theme");
+      const initialTheme = params.get("theme") || savedTheme || "dark";
+      setTheme(initialTheme === "light" ? "light" : "dark", false);
+
+      // Pinned favorites
+      let pinned = new Set();
+      try {
+        const stored = JSON.parse(localStorage.getItem("awos_pinned") || "[]");
+        if (Array.isArray(stored)) pinned = new Set(stored);
+      } catch (_) {}
+
+      let allAirports = [];
+      let meta = null;
+      let currentFilter = "all";
+      let sortKey = "observed_epoch";
+      let sortDir = "desc";
+      let searchQuery = params.get("q") || "";
+      let activeDetail = null;
+
+      const elSearch = document.getElementById("searchInput");
+      elSearch.value = searchQuery;
+
+      function setTheme(theme, persist = true) {
+        document.documentElement.setAttribute("data-theme", theme);
+        document.getElementById("btnTheme").textContent = theme === "dark" ? "☀ Terang" : "☾ Gelap";
+        if (persist) {
+          try { localStorage.setItem("awos_theme", theme); } catch (_) {}
+        }
+      }
+
+      function showToast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        clearTimeout(showToast._timer);
+        showToast._timer = setTimeout(() => t.classList.remove("show"), 2000);
+      }
+
+      function copyText(text, label = "Tersalin!") {
+        if (!text) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => showToast(label)).catch(() => fallbackCopy(text, label));
+        } else {
+          fallbackCopy(text, label);
+        }
+      }
+
+      function fallbackCopy(text, label) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); showToast(label); } catch (_) {}
+        document.body.removeChild(ta);
+      }
+
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return "";
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function getReferenceEpoch() {
+        if (meta && meta.fetched_at_utc) {
+          const parsed = Date.parse(meta.fetched_at_utc);
+          if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000);
+        }
+        return Math.floor(Date.now() / 1000);
+      }
+
+      function ageMinutes(rec) {
+        if (!rec.observed_epoch) return Infinity;
+        return Math.max(0, Math.round((getReferenceEpoch() - rec.observed_epoch) / 60));
+      }
+
+      function formatWib(rec) {
+        if (!rec.observed_at_wib) return "-";
+        // "2026-11-25T00:13:00+07:00" -> "25 Nov 00:13"
+        const m = rec.observed_at_wib.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
+        if (!m) return rec.observed_at_wib.slice(0, 16).replace("T", " ");
+        const months = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+        return `${m[3]} ${months[Number(m[2]) - 1]} ${m[4]}`;
+      }
+
+      function formatAgeLabel(mins) {
+        if (!Number.isFinite(mins)) return "";
+        if (mins < 60) return `${mins}m lalu`;
+        const h = Math.floor(mins / 60);
+        if (h < 48) return `${h}j lalu`;
+        return `${Math.floor(h / 24)}h lalu`;
+      }
+
+      function freshnessClass(mins) {
+        if (mins <= 90) return "dot-fresh";
+        if (mins <= 360) return "dot-warn";
+        return "dot-stale";
+      }
+
+      function renderWind(rec) {
+        const dir = rec.wind_direction_deg;
+        const spd = rec.wind_speed_kt;
+        const gust = rec.wind_gust_kt;
+        if (dir === null && spd === null) return '<span class="muted">-</span>';
+        const dirStr = dir !== null ? String(dir).padStart(3, "0") + "°" : "VRB";
+        const spdStr = spd !== null ? `${spd}kt` : "-";
+        const gustStr = gust ? ` G${gust}` : "";
+        // Arrow points where wind blows TO (dir + 180)
+        const rot = dir !== null ? (dir + 180) % 360 : null;
+        const arrow = rot !== null && spd > 0
+          ? `<span class="wind-arrow" style="transform:rotate(${rot}deg)" title="Dari ${dir}°">↑</span>`
+          : `<span class="wind-arrow muted">•</span>`;
+        return `<span class="wind-cell">${arrow}<span>${dirStr}/${spdStr}${gustStr}</span></span>`;
+      }
+
+      function renderVis(rec) {
+        if (rec.visibility_value === null || rec.visibility_value === undefined) {
+          return '<span class="muted">-</span>';
+        }
+        const unit = (rec.visibility_unit || "meters").toLowerCase();
+        const isMeters = unit.includes("meter");
+        const val = isMeters ? Math.round(rec.visibility_value) : rec.visibility_value;
+        const label = isMeters ? `${val.toLocaleString("id-ID")} m` : `${val} ${rec.visibility_unit}`;
+        let cls = "chip-ok";
+        if (isMeters && val < 1500) cls = "chip-danger";
+        else if (isMeters && val < 5000) cls = "chip-warn";
+        else if (!isMeters && val < 3) cls = "chip-warn";
+        return `<span class="chip ${cls}">${label}</span>`;
+      }
+
+      function renderSkyPwx(rec) {
+        const parts = [];
+        if (rec.present_weather) {
+          const pwx = rec.present_weather.toUpperCase();
+          const isSevere = /TS|SQ|FC|GR|DS|SS|\+RA/.test(pwx);
+          const cls = isSevere ? "chip-danger" : "chip-warn";
+          parts.push(`<span class="chip ${cls}">${escapeHtml(rec.present_weather)}</span>`);
+        }
+        if (rec.sky_condition) {
+          parts.push(`<span class="mono" style="font-size:12px;">${escapeHtml(rec.sky_condition)}</span>`);
+        }
+        return parts.length ? parts.join(" ") : '<span class="muted">-</span>';
+      }
+
+      function updateStats() {
+        const activeCount = allAirports.filter((a) => ageMinutes(a) <= 120).length;
+        const lowVisCount = allAirports.filter(
+          (a) => a.visibility_value !== null && a.visibility_value < 5000 && (a.visibility_unit || "meters").toLowerCase().includes("meter")
+        ).length;
+        const pwxCount = allAirports.filter((a) => Boolean(a.present_weather)).length;
+
+        document.getElementById("statActive").textContent = activeCount;
+        document.getElementById("statTotal").textContent = allAirports.length;
+        document.getElementById("statLowVis").textContent = lowVisCount;
+        document.getElementById("statPwx").textContent = pwxCount;
+
+        if (meta) {
+          document.getElementById("statOfflineNote").textContent =
+            meta.failed_count > 0 ? `${meta.failed_count} stasiun sedang offline` : "Semua stasiun online";
+          const wib = (meta.fetched_at_wib || "").replace("T", " ").replace("+07:00", " WIB");
+          const utc = (meta.fetched_at_utc || "").replace("T", " ").replace("Z", " UTC");
+          document.getElementById("lastUpdated").textContent = `Update: ${wib} (${utc})`;
+        }
+      }
+
+      function getFilteredAirports() {
+        const q = searchQuery.trim().toLowerCase();
+        return allAirports.filter((a) => {
+          if (currentFilter === "active" && ageMinutes(a) > 120) return false;
+          if (currentFilter === "lowvis") {
+            const isMeters = (a.visibility_unit || "meters").toLowerCase().includes("meter");
+            if (a.visibility_value === null || !isMeters || a.visibility_value >= 5000) return false;
+          }
+          if (currentFilter === "pwx" && !a.present_weather) return false;
+          if (currentFilter === "pinned" && !pinned.has(a.icao)) return false;
+
+          if (q) {
+            const hay = `${a.icao} ${a.airport_name || ""} ${a.directory_name || ""} ${a.metar || ""} ${a.present_weather || ""} ${a.sky_condition || ""}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+      }
+
+      function sortAirports(list) {
+        const factor = sortDir === "asc" ? 1 : -1;
+        return list.slice().sort((a, b) => {
+          // Always float pinned items to top when not explicitly filtering something else? Keep pure sort for clarity
+          const va = a[sortKey];
+          const vb = b[sortKey];
+          if (va === null || va === undefined) return 1;
+          if (vb === null || vb === undefined) return -1;
+          if (typeof va === "number" && typeof vb === "number") {
+            return (va - vb) * factor;
+          }
+          return String(va).localeCompare(String(vb)) * factor;
+        });
+      }
+
+      function renderTable() {
+        const tbody = document.getElementById("tableBody");
+        const filtered = sortAirports(getFilteredAirports());
+        document.getElementById("rowCount").textContent =
+          `Menampilkan ${filtered.length} dari ${allAirports.length} bandara`;
+
+        if (!filtered.length) {
+          tbody.innerHTML = '<tr><td colspan="11" class="empty-state">Tidak ada bandara yang cocok dengan pencarian/filter saat ini.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = filtered.map((a) => {
+          const mins = ageMinutes(a);
+          const isPinned = pinned.has(a.icao);
+          const tempStr = a.temperature_c !== null ? `${a.temperature_c.toFixed(1)}°C` : "-";
+          const dewStr = a.dew_point_c !== null ? `<span class="muted"> / ${a.dew_point_c.toFixed(1)}°</span>` : "";
+          const rhStr = a.humidity_pct !== null ? `${a.humidity_pct}%` : "-";
+          const qnhStr = a.altimeter_value !== null ? `${a.altimeter_value} <span class="muted">${escapeHtml(a.altimeter_unit || "")}</span>` : "-";
+          const metarEsc = escapeHtml(a.metar || "");
+
+          return `
+            <tr data-icao="${escapeHtml(a.icao)}">
+              <td>
+                <button class="star-btn ${isPinned ? "pinned" : ""}" data-pin="${escapeHtml(a.icao)}" title="Tandai favorit" type="button">
+                  ${isPinned ? "★" : "☆"}
+                </button>
+              </td>
+              <td><span class="icao-badge">${escapeHtml(a.icao)}</span></td>
+              <td><span class="airport-name" title="${escapeHtml(a.airport_name)}">${escapeHtml(a.airport_name)}</span></td>
+              <td>
+                <span class="status-wrap" title="${escapeHtml(a.observed_at_wib || "")} (${formatAgeLabel(mins)})">
+                  <span class="dot ${freshnessClass(mins)}"></span>
+                  <span>${formatWib(a)}</span>
+                </span>
+              </td>
+              <td class="mono">${tempStr}${dewStr}</td>
+              <td class="mono">${rhStr}</td>
+              <td>${renderWind(a)}</td>
+              <td class="mono">${qnhStr}</td>
+              <td>${renderVis(a)}</td>
+              <td>${renderSkyPwx(a)}</td>
+              <td>
+                <div class="metar-cell">
+                  <span class="metar-text" title="${metarEsc}">${metarEsc || "-"}</span>
+                  ${a.metar ? `<button class="copy-mini" data-copy-metar="${escapeHtml(a.icao)}" type="button">Copy</button>` : ""}
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      function openDetail(icao) {
+        const rec = allAirports.find((a) => a.icao === icao);
+        if (!rec) return;
+        activeDetail = rec;
+
+        document.getElementById("detailTitle").textContent = `${rec.icao} — ${rec.airport_name}`;
+        document.getElementById("detailSub").textContent =
+          `Observasi: ${rec.observed_at_wib || "-"} | UTC: ${rec.observed_at_utc || "-"}`;
+
+        const fields = [
+          ["Suhu", rec.temperature_c !== null ? `${rec.temperature_c} °C` : "-"],
+          ["Dew Point", rec.dew_point_c !== null ? `${rec.dew_point_c} °C` : "-"],
+          ["Kelembapan (RH)", rec.humidity_pct !== null ? `${rec.humidity_pct} %` : "-"],
+          ["Angin (2m)", rec.wind_speed_kt !== null ? `${rec.wind_direction_deg ?? "VRB"}° / ${rec.wind_speed_kt} kt${rec.wind_gust_kt ? " G" + rec.wind_gust_kt : ""}` : "-"],
+          ["QNH / Altimeter", rec.altimeter_value !== null ? `${rec.altimeter_value} ${rec.altimeter_unit || ""}` : "-"],
+          ["Visibilitas", rec.visibility_value !== null ? `${Math.round(rec.visibility_value)} ${rec.visibility_unit || ""}` : "-"],
+          ["Awan (Sky)", rec.sky_condition || "-"],
+          ["Present Weather", rec.present_weather || "-"],
+          ["Curah Hujan", rec.rainfall_hour !== null ? `${rec.rainfall_hour} ${rec.rainfall_unit || "mm"}` : "-"],
+          ["Density Altitude", rec.density_altitude_ft !== null ? `${rec.density_altitude_ft} ft` : "-"],
+          ["Elevasi / Runway", `${rec.elevation_ft ?? "-"} ft / RWY ${rec.runway || "-"}`],
+          ["Koordinat", rec.latitude !== null && rec.longitude !== null ? `${rec.latitude}, ${rec.longitude}` : "-"],
+        ];
+
+        document.getElementById("detailGrid").innerHTML = fields
+          .map(([k, v]) => `<div class="detail-box"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`)
+          .join("");
+
+        document.getElementById("detailMetar").textContent = rec.metar || "Tidak tersedia";
+        document.getElementById("detailAwosLink").href = rec.url || "#";
+
+        const mapLink = document.getElementById("detailMapLink");
+        if (rec.latitude !== null && rec.longitude !== null) {
+          mapLink.href = `https://www.openstreetmap.org/?mlat=${rec.latitude}&mlon=${rec.longitude}#map=13/${rec.latitude}/${rec.longitude}`;
+          mapLink.style.display = "inline";
+        } else {
+          mapLink.style.display = "none";
+        }
+
+        document.getElementById("detailModal").classList.add("open");
+      }
+
+      function updateEmbedSnippet() {
+        const theme = document.getElementById("embTheme").value;
+        const height = Math.max(360, Number(document.getElementById("embHeight").value) || 720);
+        const airports = document.getElementById("embAirports").value.trim().toUpperCase().replace(/\s+/g, "");
+
+        const baseUrl = window.location.href.split("?")[0];
+        const q = new URLSearchParams();
+        q.set("theme", theme);
+        if (airports) q.set("airports", airports);
+
+        const src = `${baseUrl}?${q.toString()}`;
+        document.getElementById("embedSnippet").value =
+`<iframe
+  src="${src}"
+  title="Cuaca Bandara Indonesia (AWOS Live)"
+  style="width: 100%; height: ${height}px; border: 0; border-radius: 12px;"
+  loading="lazy">
+</iframe>`;
+      }
+
+      async function loadData(isManual = false) {
+        try {
+          const sep = DATA_URL.includes("?") ? "&" : "?";
+          const res = await fetch(`${DATA_URL}${sep}t=${Date.now()}`, { cache: "no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const payload = await res.json();
+
+          meta = payload.meta || null;
+          let list = Array.isArray(payload.airports) ? payload.airports : [];
+          if (URL_AIRPORTS.length) {
+            const set = new Set(URL_AIRPORTS);
+            list = list.filter((a) => set.has((a.icao || "").toUpperCase()));
+          }
+          allAirports = list;
+          updateStats();
+          renderTable();
+          if (isManual) showToast("Data cuaca diperbarui!");
+        } catch (err) {
+          document.getElementById("lastUpdated").textContent = "Gagal memuat data JSON";
+          document.getElementById("liveDot").style.background = "var(--red)";
+          document.getElementById("tableBody").innerHTML =
+            `<tr><td colspan="11" class="empty-state">Gagal mengambil data dari <code>${escapeHtml(DATA_URL)}</code> (${escapeHtml(err.message)}).<br/>Jika dibuka langsung lewat <code>file://</code>, jalankan <code>python preview_server.py</code> terlebih dahulu.</td></tr>`;
+        }
+      }
+
+      // Event listeners
+      elSearch.addEventListener("input", (e) => {
+        searchQuery = e.target.value;
+        renderTable();
+      });
+
+      function setFilter(f) {
+        currentFilter = f;
+        document.querySelectorAll("#filterPills .pill").forEach((el) => {
+          el.classList.toggle("active", el.dataset.filter === f);
+        });
+        document.querySelectorAll("#statsGrid .stat-card").forEach((el) => {
+          el.classList.toggle("active", el.dataset.filter === f);
+        });
+        renderTable();
+      }
+
+      document.getElementById("filterPills").addEventListener("click", (e) => {
+        const btn = e.target.closest(".pill");
+        if (btn) setFilter(btn.dataset.filter);
+      });
+
+      document.getElementById("statsGrid").addEventListener("click", (e) => {
+        const card = e.target.closest(".stat-card");
+        if (card) setFilter(card.dataset.filter);
+      });
+
+      document.querySelector("thead").addEventListener("click", (e) => {
+        const th = e.target.closest("th.sortable");
+        if (!th) return;
+        const key = th.dataset.sort;
+        if (sortKey === key) {
+          sortDir = sortDir === "asc" ? "desc" : "asc";
+        } else {
+          sortKey = key;
+          sortDir = key === "icao" || key === "airport_name" ? "asc" : "desc";
+        }
+        document.querySelectorAll("thead th.sortable").forEach((el) => {
+          el.classList.remove("sorted");
+          el.textContent = el.textContent.replace(/ [↑↓]$/, "");
+        });
+        th.classList.add("sorted");
+        th.textContent += sortDir === "asc" ? " ↑" : " ↓";
+        renderTable();
+      });
+
+      document.getElementById("tableBody").addEventListener("click", (e) => {
+        const pinBtn = e.target.closest("[data-pin]");
+        if (pinBtn) {
+          e.stopPropagation();
+          const code = pinBtn.dataset.pin;
+          if (pinned.has(code)) pinned.delete(code);
+          else pinned.add(code);
+          try { localStorage.setItem("awos_pinned", JSON.stringify([...pinned])); } catch (_) {}
+          renderTable();
+          return;
+        }
+        const copyBtn = e.target.closest("[data-copy-metar]");
+        if (copyBtn) {
+          e.stopPropagation();
+          const rec = allAirports.find((a) => a.icao === copyBtn.dataset.copyMetar);
+          if (rec && rec.metar) copyText(rec.metar, `METAR ${rec.icao} tersalin!`);
+          return;
+        }
+        const row = e.target.closest("tr[data-icao]");
+        if (row) openDetail(row.dataset.icao);
+      });
+
+      document.getElementById("btnRefresh").addEventListener("click", () => loadData(true));
+      document.getElementById("btnTheme").addEventListener("click", () => {
+        const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        setTheme(next, true);
+      });
+
+      // Modals
+      document.getElementById("closeDetail").addEventListener("click", () => {
+        document.getElementById("detailModal").classList.remove("open");
+      });
+      document.getElementById("detailModal").addEventListener("click", (e) => {
+        if (e.target.id === "detailModal") e.target.classList.remove("open");
+      });
+      document.getElementById("btnCopyDetailMetar").addEventListener("click", () => {
+        if (activeDetail && activeDetail.metar) {
+          copyText(activeDetail.metar, `METAR ${activeDetail.icao} tersalin!`);
+        }
+      });
+
+      document.getElementById("btnEmbed").addEventListener("click", () => {
+        document.getElementById("embTheme").value = document.documentElement.getAttribute("data-theme") || "dark";
+        updateEmbedSnippet();
+        document.getElementById("embedModal").classList.add("open");
+      });
+      document.getElementById("closeEmbed").addEventListener("click", () => {
+        document.getElementById("embedModal").classList.remove("open");
+      });
+      document.getElementById("embedModal").addEventListener("click", (e) => {
+        if (e.target.id === "embedModal") e.target.classList.remove("open");
+      });
+      ["embTheme", "embHeight", "embAirports"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", updateEmbedSnippet);
+      });
+      document.getElementById("btnCopyEmbed").addEventListener("click", () => {
+        copyText(document.getElementById("embedSnippet").value, "Kode iframe tersalin!");
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          document.getElementById("detailModal").classList.remove("open");
+          document.getElementById("embedModal").classList.remove("open");
+        }
+      });
+
+      // Initial fetch + auto refresh every 5 minutes
+      loadData(false);
+      setInterval(() => loadData(false), 5 * 60 * 1000);
+    })();
+  </script>
+</body>
+</html>
